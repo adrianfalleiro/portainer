@@ -1,36 +1,34 @@
 package http
 
 import (
+	"fmt"
+	"github.com/gorilla/mux"
+	"log"
 	"net/http"
-	"strings"
+	"os"
 )
 
 // FileHandler represents an HTTP API handler for managing static files.
 type FileHandler struct {
-	http.Handler
+	*mux.Router
+	Logger *log.Logger
 }
 
-func newFileHandler(assetPath string) *FileHandler {
+func newFileHandler(assetPath string, mw *middleWareService) *FileHandler {
 	h := &FileHandler{
-		Handler: http.FileServer(http.Dir(assetPath)),
+		Router: mux.NewRouter(),
+		Logger: log.New(os.Stderr, "", log.LstdFlags),
 	}
+	// h.NotFoundHandler = http.HandlerFunc(notFound)
+	handler := mw.static(
+		http.FileServer(http.Dir(assetPath)),
+		http.HandlerFunc(notFound),
+		assetPath)
+	h.PathPrefix("/").Handler(handler)
 	return h
 }
 
-func isHTML(acceptContent []string) bool {
-	for _, accept := range acceptContent {
-		if strings.Contains(accept, "text/html") {
-			return true
-		}
-	}
-	return false
-}
-
-func (fileHandler *FileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !isHTML(r.Header["Accept"]) {
-		w.Header().Set("Cache-Control", "max-age=31536000")
-	} else {
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	}
-	fileHandler.Handler.ServeHTTP(w, r)
+func notFound(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("not found func called")
+	http.ServeFile(w, r, "/index.html")
 }

@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/portainer/portainer"
-
 	"net/http"
+	"os"
+	"path"
 	"strings"
 )
 
@@ -21,6 +22,15 @@ type (
 const (
 	contextAuthenticationKey contextKey = iota
 )
+
+func isHTML(acceptContent []string) bool {
+	for _, accept := range acceptContent {
+		if strings.Contains(accept, "text/html") {
+			return true
+		}
+	}
+	return false
+}
 
 func extractTokenDataFromRequestContext(request *http.Request) (*portainer.TokenData, error) {
 	contextData := request.Context().Value(contextAuthenticationKey)
@@ -54,11 +64,46 @@ func (service *middleWareService) administrator(h http.Handler) http.Handler {
 	return h
 }
 
+// static is a middleware that checks if file exists
+// and if not serves a custom handler
+// and sets Cache-Control header for HTML
+func (service *middleWareService) static(h http.Handler, errHandler http.Handler, assetPath string) http.Handler {
+	h = mwCheckIfFileExists(h, errHandler, assetPath)
+	h = mwStaticAssetCacheControlHeaders(h)
+	return h
+}
+
 // mwSecureHeaders provides secure headers middleware for handlers
 func mwSecureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("X-Content-Type-Options", "nosniff")
 		w.Header().Add("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func mwCheckIfFileExists(next http.Handler, errHandler http.Handler, assetPath string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := os.Open(path.Join(assetPath, path.Clean(r.URL.Path)))
+		if os.IsNotExist(err) {
+			errHandler.ServeHTTP(w, r)
+			return
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+// mwStaticAssetCacheControlHeaders sets Cache-Control headers
+// it checks if the client is requesting HTML and if so
+// sets the Cache-Control header to cache the HTML fragment for 1 year
+func mwStaticAssetCacheControlHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isHTML(r.Header["Accept"]) {
+			w.Header().Set("Cache-Control", "max-age=31536000")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

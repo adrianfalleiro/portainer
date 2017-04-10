@@ -56,7 +56,7 @@ func (server *Server) Start() error {
 	endpointHandler.ProxyService = proxyService
 	var uploadHandler = NewUploadHandler(middleWareService)
 	uploadHandler.FileService = server.FileService
-	var fileHandler = newFileHandler(server.AssetsPath)
+	var fileHandler = newFileHandler(server.AssetsPath, middleWareService)
 
 	server.Handler = &Handler{
 		AuthHandler:      authHandler,
